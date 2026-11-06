@@ -130,14 +130,23 @@ def buscar_casos_similares(texto):
 
 
 def guardar_decision(pedido_id, cliente_id, decision, monto):
+    """Guarda la decisión SOLO si no existe ya para ese pedido.
+    Así el generador de evidencias es idempotente."""
     conn = _conn(); cur = conn.cursor()
+    cur.execute(
+        "SELECT id FROM historical_cliente WHERE pedido_id=? AND cliente_id=?",
+        (pedido_id, cliente_id),
+    )
+    if cur.fetchone() is not None:
+        conn.close()
+        return {"ok": True, "skipped": True}
     cur.execute(
         "INSERT INTO historical_cliente(cliente_id,pedido_id,decision,fecha,monto) "
         "VALUES (?,?,?,?,?)",
         (cliente_id, pedido_id, decision, HOY.isoformat(), monto),
     )
     conn.commit(); conn.close()
-    return {"ok": True}
+    return {"ok": True, "skipped": False}
 
 
 # ============================================================

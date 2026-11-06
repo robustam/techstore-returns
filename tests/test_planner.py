@@ -5,9 +5,11 @@ from scripts import generator_evidencias as ev
 
 
 def _pedido_base(**overrides):
-    """Pedido sintético dentro de plazo, monto bajo, con comprobante."""
+    """Pedido sintético dentro de plazo, monto bajo, con comprobante.
+    Usa un ID real de la BD (PED-001) para que validar_politica lo encuentre.
+    """
     base = {
-        "id": "PED-TEST",
+        "id": "PED-001",            # ID real que existe en la BD
         "cliente_id": "C-001",
         "monto": 25000,
         "fecha": (ev.HOY - datetime.timedelta(days=10)).isoformat(),
@@ -25,10 +27,10 @@ def test_estandar_aprueba():
 
 
 def test_fuera_de_plazo_escala():
-    """Regla 1: pedido de 47 días -> escalar."""
-    p = _pedido_base(
-        fecha=(ev.HOY - datetime.timedelta(days=47)).isoformat()
-    )
+    """Regla 1: pedido de 47 días -> escalar.
+    Usa PED-015, que en la BD tiene fecha fuera de plazo.
+    """
+    p = _pedido_base(id="PED-015", cliente_id="C-002")
     assert ev.decidir_accion(p) == "escalar"
 
 

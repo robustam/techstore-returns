@@ -1,6 +1,8 @@
 """
 Generador de datos sintéticos para TechStore Returns.
 Crea techstore.db con 40 pedidos y 15 clientes usando semilla fija.
+IDEMPOTENTE: ejecutarlo N veces deja la BD en el mismo estado.
+
 Uso:  python -m scripts.generator_datos
 """
 import sqlite3
@@ -8,12 +10,12 @@ import random
 import datetime
 from pathlib import Path
 
-# ---- Semilla fija para reproducibilidad (requisito del informe) ----
+# ---- Semilla fija para reproducibilidad ----
 SEED = 42
 random.seed(SEED)
 
 DB_PATH = Path(__file__).resolve().parent.parent / "techstore.db"
-HOY = datetime.date(2026, 11, 6)  # fecha de la evaluación
+HOY = datetime.date(2026, 11, 6)
 
 
 def crear_tablas(cur):
@@ -64,7 +66,6 @@ def generar_clientes(cur):
         "Nicolás Reyes", "Olga Vargas",
     ]
     for i, nombre in enumerate(nombres, start=1):
-        # 1 de cada 3 es recurrente
         recurrente = 1 if i % 3 == 0 else 0
         cur.execute(
             "INSERT INTO clientes VALUES (?,?,?)",
@@ -73,17 +74,12 @@ def generar_clientes(cur):
 
 
 def generar_pedidos(cur):
-    """40 pedidos con fechas que cubren todos los escenarios del planner."""
+    """40 pedidos base. Los 6 de escenario se sobreescriben después."""
     montos = [25000, 30000, 48000, 60000, 90000, 120000, 150000, 250000]
     descripciones = [
-        "Producto defectuoso",
-        "No me gustó",
-        "Talla incorrecta",
-        "Llegó dañado en transporte",
-        "No funciona",
-        "",
+        "Producto defectuoso", "No me gustó", "Talla incorrecta",
+        "Llegó dañado en transporte", "No funciona", "",
     ]
-    # Días de antigüedad: mezcla de dentro y fuera de plazo
     dias_opciones = [3, 7, 12, 20, 28, 35, 45, 60]
 
     for i in range(1, 41):
@@ -91,7 +87,7 @@ def generar_pedidos(cur):
         monto = random.choice(montos)
         dias_atras = random.choice(dias_opciones)
         fecha = (HOY - datetime.timedelta(days=dias_atras)).isoformat()
-        comprobante = random.choice([1, 1, 1, 0])  # 75% con comprobante
+        comprobante = random.choice([1, 1, 1, 0])
         descripcion = random.choice(descripciones)
         cur.execute(
             "INSERT INTO pedidos VALUES (?,?,?,?,?,?)",
@@ -99,49 +95,7 @@ def generar_pedidos(cur):
         )
 
 
-def generar_historial(cur):
-    """Historial precargado para los escenarios de memoria y fraude."""
-    historial = [
-        # C-004: cliente recurrente (memoria)
-        ("C-004", "PED-004", "aprobar_estandar", "2026-09-01", 25000),
-        # C-005: 4 devoluciones en 90 días → fraude
-        ("C-005", "PED-005", "aprobar_estandar", "2026-06-01", 25000),
-        ("C-005", "PED-010", "aprobar_estandar", "2026-07-01", 25000),
-        ("C-005", "PED-011", "aprobar_estandar", "2026-08-01", 25000),
-        ("C-005", "PED-012", "aprobar_estandar", "2026-09-01", 25000),
-    ]
-    cur.executemany(
-        "INSERT INTO historical_cliente(cliente_id,pedido_id,decision,fecha,monto) "
-        "VALUES (?,?,?,?,?)",
-        historial,
-    )
-
-
-def forzar_escenarios(cur):
-    """Ajusta pedidos concretos para que los 6 escenarios de evidencia
-    produzcan exactamente la decisión esperada."""
-    cur.executemany(
-        "UPDATE pedidos SET cliente_id=?, monto=?, fecha=?, comprobante=?, descripcion=? "
-        "WHERE id=?",
-        [
-            # Escenario 1: estándar (dentro de plazo, monto bajo, con comprobante)
-            ("C-001", 25000, "2026-10-20", 1, "Producto defectuoso", "PED-001"),
-            # Escenario 2: fuera de plazo (47 días)
-            ("C-002", 25000, "2026-09-20", 1, "No funciona", "PED-015"),
-            # Escenario 3: alto valor ($250.000)
-            ("C-003", 250000, "2026-10-25", 1, "Producto caro", "PED-022"),
-            # Escenario 4: cliente recurrente (C-004 ya tiene historial)
-            ("C-004", 30000, "2026-10-28", 1, "Cambio de opinión", "PED-024"),
-            # Escenario 5: posible fraude (C-005 tiene 4 devoluciones)
-            ("C-005", 20000, "2026-10-29", 1, "No sirve", "PED-005"),
-            # Escenario 6: falta comprobante
-            ("C-006", 30000, "2026-10-30", 0, "Sin descripción", "PED-030"),
-        ],
-    )
-
-
 def generar_politicas(cur):
-    """Fragmentos de política para la colección de Chroma (RAG)."""
     politicas = [
         ("plazo", "El cliente puede solicitar devolución dentro de los 30 días "
                   "corridos desde la fecha de compra."),
@@ -165,10 +119,61 @@ def generar_politicas(cur):
     )
 
 
+def forzar_escenarios(cur):
+    """Fuerza los 6 escenarios. LIMPIA el historial de los clientes de
+    escenario antes de insertar, para garantizar idempotencia."""
+    # 1. Limpiar historial de los 6 clientes de escenario
+    cur.execute(
+        "DELETE FROM historical_cliente WHERE cliente_id IN "
+        "('C-001','C-002','C-003','C-004','C-005','C-006')"
+    )
+
+    # 2. Forzar flags de recurrente
+    cur.execute("UPDATE clientes SET recurrente=1 WHERE id='C-004'")
+    cur.execute(
+        "UPDATE clientes SET recurrente=0 "
+        "WHERE id IN ('C-001','C-002','C-003','C-005','C-006')"
+    )
+
+    # 3. Historial: C-004 = 1 devolución (recurrente, sin fraude)
+    cur.execute(
+        "INSERT INTO historical_cliente(cliente_id,pedido_id,decision,fecha,monto) "
+        "VALUES (?,?,?,?,?)",
+        ("C-004", "PED-004", "aprobar_estandar", "2026-09-01", 25000),
+    )
+
+    # 4. Historial: C-005 = 4 devoluciones (fraude)
+        # 4. Historial: C-005 = 4 devoluciones en los últimos 90 días (fraude)
+    for i, fecha in enumerate(
+        ["2026-08-15", "2026-09-01", "2026-10-01", "2026-10-20"], start=1
+    ):
+        cur.execute(
+            "INSERT INTO historical_cliente(cliente_id,pedido_id,decision,fecha,monto) "
+            "VALUES (?,?,?,?,?)",
+            ("C-005", f"PED-00{i}", "aprobar_estandar", fecha, 25000),
+        )
+
+    # 5. Forzar los 6 pedidos de escenario
+    escenarios = [
+        ("PED-001", "C-001", 25000,  "2026-10-20", 1, "Producto defectuoso"),
+        ("PED-015", "C-002", 25000,  "2026-09-20", 1, "No funciona"),
+        ("PED-022", "C-003", 250000, "2026-10-25", 1, "Producto caro"),
+        ("PED-024", "C-004", 30000,  "2026-10-28", 1, "Cambio de opinión"),
+        ("PED-005", "C-005", 20000,  "2026-10-29", 1, "No sirve"),
+        ("PED-030", "C-006", 30000,  "2026-10-30", 0, ""),
+    ]
+    for pedido_id, cliente_id, monto, fecha, comprobante, descripcion in escenarios:
+        cur.execute(
+            "UPDATE pedidos SET cliente_id=?, monto=?, fecha=?, comprobante=?, descripcion=? "
+            "WHERE id=?",
+            (cliente_id, monto, fecha, comprobante, descripcion, pedido_id),
+        )
+
+
 def main():
     print(f"Generando datos en: {DB_PATH}")
     if DB_PATH.exists():
-        DB_PATH.unlink()
+        DB_PATH.unlink()  # Borra el archivo completo
 
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
@@ -176,9 +181,8 @@ def main():
     crear_tablas(cur)
     generar_clientes(cur)
     generar_pedidos(cur)
-    generar_historial(cur)
-    forzar_escenarios(cur)
     generar_politicas(cur)
+    forzar_escenarios(cur)
     conn.commit()
 
     # Resumen
@@ -190,9 +194,9 @@ def main():
 
     print(f"  OK {n_clientes} clientes")
     print(f"  OK {n_pedidos} pedidos")
-    print(f"  OK {n_hist} registros de historial")
-    print(f"  OK {n_pol} políticas (para Chroma)")
-    print("Listo. Puedes correr:  streamlit run app.py")
+    print(f"  OK {n_hist} registros de historial (debe ser 5)")
+    print(f"  OK {n_pol} políticas")
+    print("Listo.")
 
 
 if __name__ == "__main__":
