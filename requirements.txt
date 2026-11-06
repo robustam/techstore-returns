@@ -1,0 +1,22 @@
+﻿# Core
+python-dotenv==1.0.1
+
+# LangChain
+langchain==0.2.16
+langchain-core==0.2.38
+langchain-community==0.2.16
+langchain-google-genai==1.0.10
+
+# Gemini
+google-generativeai==0.7.2
+
+# Vector store + embeddings
+chromadb==0.5.5
+sentence-transformers==3.0.1
+
+# UI
+streamlit==1.37.1
+
+# Testing
+pytest==8.3.2
+pytest-cov==5.0.0

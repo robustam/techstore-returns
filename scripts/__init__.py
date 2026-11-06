@@ -1,0 +1,1 @@
+# Paquete scripts — generadores de datos y evidencias

@@ -1,0 +1,1 @@
+# Paquete tests — suite de pruebas automatizadas

@@ -1,0 +1,55 @@
+﻿# ---------- Entorno virtual ----------
+.venv/
+venv/
+env/
+ENV/
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ---------- Testing ----------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.cache
+
+# ---------- Secretos y configuración local ----------
+.env
+.env.local
+.env.*.local
+
+# ---------- Base de datos y artefactos generados ----------
+techstore.db
+techstore.db-journal
+techstore.db-wal
+techstore.db-shm
+chroma_db/
+evidence/
+
+# ---------- IDEs ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---------- Sistema operativo ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- Streamlit ----------
+.streamlit/secrets.toml
+
+# ---------- Notebooks ----------
+.ipynb_checkpoints/
